@@ -24,6 +24,9 @@ Requires Python >=3.13. CI (`.github/workflows/ci.yml`) runs ruff check, `ruff f
 
 ## Architecture
 
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the diagram, module
+table, and data-model reference.
+
 A strict one-directional pipeline. Each stage is a separate module with a single dataclass output; everything up to the widgets is **pure and Textual-free**, which is what makes it testable in isolation. Never import `textual` into the lower layers.
 
 ```
