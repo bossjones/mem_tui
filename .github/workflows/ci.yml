@@ -1,0 +1,100 @@
+# This workflow will install Python dependencies, run tests and lint with a single version of Python
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: CI
+
+on:
+  push:
+    # Use ["main", "master"] for CI only on the default branch.
+    # Use ["**"] for CI on all branches.
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        # Update this as needed:
+        # Common platforms: ["ubuntu-latest", "macos-latest", "windows-latest"]
+        os: ["ubuntu-latest"]
+        # mem-tui requires Python >=3.13 (see pyproject.toml).
+        python-version: ["3.13"]
+
+    # Linux only by default. Use ${{ matrix.os }} for other OSes.
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      # Generally following uv docs:
+      # https://docs.astral.sh/uv/guides/integration/github/
+
+      - name: Checkout (official GitHub action)
+        uses: actions/checkout@v4
+        with:
+          # Important for versioning plugins:
+          fetch-depth: 0
+
+      - name: Install uv (official Astral action)
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Update this as needed:
+          version: "0.9.5"
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Python (using uv)
+        run: uv python install
+
+      - name: Install all dependencies
+        run: uv sync --all-extras --dev
+
+      - name: Run linting (ruff)
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Run type checking (pyright)
+        run: uv run pyright
+
+      - name: Run tests with coverage
+        id: pytest
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run pytest --cov=mem_tui --cov-report=term-missing 2>&1 | tee coverage-report.txt
+        continue-on-error: true
+
+      - name: Post coverage comment on PR
+        if: github.event_name == 'pull_request' && matrix.python-version == '3.13'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('coverage-report.txt', 'utf8');
+            const passed = '${{ steps.pytest.outcome }}' === 'success';
+            const icon = passed ? '✅' : '❌';
+            const label = passed ? 'Tests passed' : 'Tests failed';
+            const marker = '<!-- unit-test-coverage -->';
+            const body = `${marker}
+## ${icon} ${label}
+
+\`\`\`
+${report.trim()}
+\`\`\``;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number,
+            });
+            const existing = comments.find(c => c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            }
+
+      - name: Fail job if tests failed
+        if: steps.pytest.outcome == 'failure'
+        run: exit 1
