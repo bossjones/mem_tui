@@ -1,0 +1,8 @@
+{
+  "include": ["src", "tests", "mem_tui.py"],
+  "pythonVersion": "3.13",
+  "typeCheckingMode": "strict",
+  "reportMissingTypeStubs": false,
+  "venvPath": ".",
+  "venv": ".venv"
+}
